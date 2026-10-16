@@ -2,7 +2,6 @@
 
 import io
 import pandas as pd
-from pysam import VariantFile
 from pyvariantfilter.variant import Variant
 import numpy as np
 import seaborn as sns
