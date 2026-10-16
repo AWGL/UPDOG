@@ -439,9 +439,34 @@ class test_utility_funcs(unittest.TestCase):
         self.assertFalse(flags['is_biparental_count'])
         variant.is_hom_alt.assert_called_once_with('PROBAND1')
 
+    def test_check_affected_and_sex(self):
+        """
+        Basic tests to ensure that this is exiting on unaffected and no sex samples
+        """
 
+        #Affected, sex set
+        affected = '2'
+        sex = '1'
+        unaffected_or_no_sex = check_affected_and_sex(affected, sex)
+        self.assertFalse(unaffected_or_no_sex)
 
+        #Unaffected, sex set
+        affected = '1'
+        sex = '1'
+        unaffected_or_no_sex = check_affected_and_sex(affected, sex)
+        self.assertTrue(unaffected_or_no_sex)
 
+        #Affected, no sex
+        affected = '2'
+        sex = '0'
+        unaffected_or_no_sex = check_affected_and_sex(affected, sex)
+        self.assertTrue(unaffected_or_no_sex)
+
+        #Unaffected, no sex
+        affected = '1'
+        sex = '0'
+        unaffected_or_no_sex = check_affected_and_sex(affected, sex)
+        self.assertTrue(unaffected_or_no_sex)
 
 if __name__ == "__main__":
     unittest.main()

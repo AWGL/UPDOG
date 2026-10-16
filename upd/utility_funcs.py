@@ -426,4 +426,21 @@ def set_chromosomes(just_one_chromosome, chromosome, sex, genome_build):
 	elif genome_build == 37:
 		print('Genome build is 37')
 		return chromosomes_to_analyze
+	
+def check_affected_and_sex(affected, sex):
+	"""
+	Simple function to make sure that affected and sex are set - triggers sys.exit()
+	"""
+
+	if affected != '2':
+
+		return True
+	
+	if sex == '0':
+
+		return True
+	
+	else:
+
+		return False
 

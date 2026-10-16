@@ -69,14 +69,13 @@ dad, mum, sex, affected, family_id = get_info_from_ped(ped, proband_id)
 # Determine if singleton if no mum or dad
 singleton = singleton_status(dad, mum)
 
-# Check affected and sex
-if affected != '2':
+# Check affected and sex - gracefully exit if not the case so it doesn't crash
+unaffected_or_no_sex = check_affected_and_sex(affected, sex)
 
-	raise ValueError('Sample must be affected in PED to create plots. Set affected column to 2.')
+if unaffected_or_no_sex:
 
-if sex == "0":
-
-	raise ValueError('Sample sex must be set. Set sex column to 1 (male) or 2 (female)')
+	print('Sample must be affected or must have sex set in PED to create plots. Set affected column to 2 and/or assign sex.')
+	sys.exit(0)
 
 # Create family object, with just proband if no family ID
 if family_id == '0':
