@@ -1,7 +1,28 @@
+import io
 import unittest
 from unittest.mock import MagicMock
 
-from utility_funcs import *
+import numpy as np
+import pandas as pd
+
+from utility_funcs import (
+    accumulate_counters,
+    apply_filters,
+    check_affected_and_sex,
+    extract_genotype_data,
+    finalize_block,
+    get_genome_build,
+    get_info_from_ped,
+    get_variant_match_flags,
+    has_crossed_block_boundary,
+    init_counters,
+    is_significant,
+    merge_contiguous_blocks,
+    replace_with_na,
+    set_chromosomes,
+    singleton_status,
+    variant_passes_prefilters,
+)
 
 class test_utility_funcs(unittest.TestCase):
     """

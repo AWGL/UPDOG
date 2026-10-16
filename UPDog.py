@@ -7,7 +7,20 @@ import pandas as pd
 from pyvariantfilter.family import Family
 from pyvariantfilter.family_member import FamilyMember
 from pyvariantfilter.variant_set import VariantSet
-from upd.utility_funcs import *
+from upd.utility_funcs import (
+    apply_filters,
+    calculate_upd_metrics_per_chromosome,
+    check_affected_and_sex,
+    create_ax_for_plotting,
+    get_genome_build,
+    get_info_from_ped,
+    is_significant,
+    merge_contiguous_blocks,
+    plot_variants,
+    replace_with_na,
+    set_chromosomes,
+    singleton_status,
+)
 from pysam import VariantFile
 
 parser = argparse.ArgumentParser(description='Find UPD events in NGS Trio Data')
