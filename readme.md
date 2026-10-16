@@ -62,6 +62,13 @@ UPDog.py \
 - `*_chr*_UPD.png`: UPD metric plots per chromosome
 - `*_chr*_baf.png`: B-allele frequency plots (if --prop_plot enabled)
 
+## Unit tests
+
+Unit tests covering utility functions can be run as follows:
+```
+python upd/tests.py
+```
+
 ## References
 
 1. [UniParental Disomy - Wikipedia](https://en.wikipedia.org/wiki/Uniparental_disomy)

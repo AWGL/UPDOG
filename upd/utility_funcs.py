@@ -11,215 +11,122 @@ import scipy
 
 sns.set()
 
-def calculate_upd_metrics_per_chromosome(vcf, chromosome_to_analyze, family, block_size, min_dp ,min_gq, min_qual, proband_id):
+COUNTER_KEYS = [
+    'variant_count',
+    'matches_paternal_uniparental_ambiguous_count',
+    'matches_maternal_uniparental_ambiguous_count',
+    'matches_paternal_uniparental_isodisomy_count',
+    'matches_maternal_uniparental_isodisomy_count',
+    'alleles_identical_to_dad_count',
+    'alleles_identical_to_mum_count',
+    'is_homozygous_count',
+    'is_biparental_count',
+]
+
+def extract_genotype_data(sample_genotype_data, ref, alt, chrom):
+	"""
+	Extract and clean GT/AD/GQ/DP/AF for one sample at one variant
+	"""
 	
+	ref_and_alt = [ref, alt]
+	gts = ['.' if allele is None else ref_and_alt[allele]
+    	for allele in sample_genotype_data['GT']]
+
+	if len(gts) == 1 and chrom.lstrip('chr') in ('X', 'Y'):
+		gts.append(gts[0])
+
+	if gts == ['.', '.'] or (len(sample_genotype_data['AD']) == 1 and sample_genotype_data['AD'][0] is None):
+		ads = [0, 0]
+	else:
+		assert len(sample_genotype_data['AD']) == 2
+		ads = [0 if ad is None else ad for ad in sample_genotype_data['AD']]
+
+	gq = sample_genotype_data['GQ'] or 0
+	dp = sample_genotype_data['DP'] or 0
+	af_raw = sample_genotype_data['AF']
+	af = 0 if af_raw is None else af_raw[0]
+
+	return gts, ads, gq, dp, af
+
+def variant_passes_prefilters(alt_alleles, alt, quality, min_qual):
+    """
+    True if the variant should be processed further
+    """
+    if len(alt_alleles) != 1:
+        return False
+    if alt == '*':
+        return False
+    if quality <= min_qual:
+        return False
+    return True
+
+def has_crossed_block_boundary(pos, last_block, block_size):
+    return pos > last_block + block_size
+
+def init_counters():
+    return {key: 0 for key in COUNTER_KEYS}
+
+def accumulate_counters(counters, flags):
+    """
+    flags: dict of the same keys (minus 'variant_count') mapped to bool
+    """
+    counters['variant_count'] += 1
+    for key, matched in flags.items():
+        if matched:
+            counters[key] += 1
+    return counters
+
+def finalize_block(counters, block_count, block_size):
+    return {'end': block_count * block_size, **counters}
+
+def get_variant_match_flags(variant, proband_id, min_gq, min_dp):
+    return {
+        'matches_paternal_uniparental_ambiguous_count': variant.matches_paternal_uniparental_ambiguous(min_parental_gq=min_gq, min_parental_depth=min_dp),
+        'matches_maternal_uniparental_ambiguous_count': variant.matches_maternal_uniparental_ambiguous(min_parental_gq=min_gq, min_parental_depth=min_dp),
+        'matches_paternal_uniparental_isodisomy_count': variant.matches_paternal_uniparental_isodisomy(min_parental_gq=min_gq, min_parental_depth=min_dp),
+        'matches_maternal_uniparental_isodisomy_count': variant.matches_maternal_uniparental_isodisomy(min_parental_gq=min_gq, min_parental_depth=min_dp),
+        'alleles_identical_to_dad_count': variant.alleles_identical_to_dad(min_parental_gq=min_gq, min_parental_depth=min_dp),
+        'alleles_identical_to_mum_count': variant.alleles_identical_to_mum(min_parental_gq=min_gq, min_parental_depth=min_dp),
+        'is_homozygous_count': variant.is_hom_alt(proband_id),
+        'is_biparental_count': variant.is_biparental_inheritance(min_parental_gq=min_gq, min_parental_depth=min_dp),
+    }
+
+def calculate_upd_metrics_per_chromosome(bcf_in, chromosome_to_analyze, family, block_size, min_dp, min_gq, min_qual, proband_id):
+	"""
+	Main function to calculate upd metrics
+	"""
 	family_member_ids = family.get_all_family_member_ids()
-
-	bcf_in = VariantFile(vcf)
-
-	variant_count = 0
-	matches_paternal_uniparental_ambiguous_count = 0
-	matches_maternal_uniparental_ambiguous_count = 0
-	matches_paternal_uniparental_isodisomy_count = 0
-	matches_maternal_uniparental_isodisomy_count = 0
-	alleles_identical_to_dad_count = 0
-	alleles_identical_to_mum_count = 0
-	is_homozygous_count = 0
-	is_biparental_count = 0
-
+	counters = init_counters()
 	block_dict = {}
 	variant_list = []
-
 	last_block = 0
 	block_count = 1
 
 	for rec in bcf_in.fetch(chromosome_to_analyze):
-		chrom = rec.chrom
-		pos = rec.pos
-		ref = rec.ref
-		alt = rec.alts
-		filter_status = rec.filter.keys()
-		quality = rec.qual
-
-		if len(alt) != 1:
-
+		if not variant_passes_prefilters(rec.alts, rec.alts[0] if rec.alts else None, rec.qual, min_qual):
 			continue
 
-		alt = alt[0]
-
-		if alt == '*':
-			continue
-
-		if quality <= min_qual:
-
-			continue
-
-		new_variant = Variant(chrom=chrom.strip('chr'), pos=pos, ref=ref, alt=alt, filter_status=filter_status, quality=quality)
+		alt = rec.alts[0]
+		new_variant = Variant(chrom=rec.chrom.strip('chr'), pos=rec.pos, ref=rec.ref, alt=alt,
+                               filter_status=rec.filter.keys(), quality=rec.qual)
 		new_variant.add_family(family)
 
 		for family_member_id in family_member_ids:
-
-			sample_genotype_data = rec.samples[family_member_id]
-
-			ref_and_alt = [ref, alt]
-
-			gts =[]
-			ads =[]
-
-			for allele in sample_genotype_data['GT']:
-
-				if allele == None:
-
-					gts.append('.')
-
-				else:
-
-					gts.append(ref_and_alt[allele])
-
-			if len(gts) == 1 and (chrom == 'X' or chrom == 'Y' or chrom == 'chrX' or chrom == 'chrY'):
-
-				gts.append(gts[0])
-
-			if gts[0] == '.' and gts[1] == '.':
-
-					ads.append(0)
-					ads.append(0)
-
-			elif len(sample_genotype_data['AD']) == 1 and sample_genotype_data['AD'][0] == None:
-
-					ads.append(0)
-					ads.append(0)
-
-			else:
-
-				assert len(sample_genotype_data['AD']) == 2
-
-				for ad in sample_genotype_data['AD']:
-
-					if ad == None:
-
-						ads.append(0)
-
-					else:
-
-						ads.append(ad)
-
-			gq = sample_genotype_data['GQ']
-
-			if gq == None:
-
-				gq = 0
-
-			dp = sample_genotype_data['DP']
-
-			if dp == None:
-
-				dp  = 0
-			
-			af = sample_genotype_data['AF']
-
-			if af == None:
-
-				af  = 0
-
-			else:
-
-				af = af[0]
-
-			try:
-				new_variant.add_genotype(family_member_id, gts, ads, gq, dp)
-			except:
-				print(chrom, pos, ref, alt, gts)
-				raise
-
-		# now we have created variant object let us count the number for each block
-
-		if new_variant.is_snp() and new_variant.all_samples_pass_genotype_quality(min_dp, min_gq):
-
-			variant_list.append([chrom, pos, ads[0], ads[1], af, dp, gq, quality])
-
-			paternal_uniparental_ambiguous = new_variant.matches_paternal_uniparental_ambiguous(min_parental_gq = min_gq, min_parental_depth = min_dp)
-			maternal_uniparental_ambiguous = new_variant.matches_maternal_uniparental_ambiguous(min_parental_gq = min_gq, min_parental_depth = min_dp)
-
-			paternal_uniparental_isodisomy = new_variant.matches_paternal_uniparental_isodisomy(min_parental_gq = min_gq, min_parental_depth = min_dp)
-			maternal_uniparental_isodisomy = new_variant.matches_maternal_uniparental_isodisomy(min_parental_gq = min_gq, min_parental_depth = min_dp)
-
-			alleles_identical_to_dad =  new_variant.alleles_identical_to_dad(min_parental_gq = min_gq, min_parental_depth = min_dp)
-			alleles_identical_to_mum = new_variant.alleles_identical_to_mum(min_parental_gq = min_gq, min_parental_depth = min_dp)
-
-			if new_variant.is_hom_alt(proband_id):
-				is_homozygous = True
-			else:
-				is_homozygous = False			
-
-			is_biparental = new_variant.is_biparental_inheritance(min_parental_gq = min_gq, min_parental_depth = min_dp)
-
-			variant_count += 1
-
-			if paternal_uniparental_ambiguous:
-
-				matches_paternal_uniparental_ambiguous_count += 1
-
-			if maternal_uniparental_ambiguous:
-
-				matches_maternal_uniparental_ambiguous_count += 1
-
-			if paternal_uniparental_isodisomy:
-
-				matches_paternal_uniparental_isodisomy_count += 1
-
-			if maternal_uniparental_isodisomy:
-
-				matches_maternal_uniparental_isodisomy_count += 1
-
-			if alleles_identical_to_dad:
-
-				alleles_identical_to_dad_count += 1
-
-			if alleles_identical_to_mum:
-
-				alleles_identical_to_mum_count += 1
-
-			if is_homozygous:
-
-				is_homozygous_count += 1
-
-			if is_biparental:
-
-				is_biparental_count += 1
-
-			# have we crossed a new block 
-			if new_variant.pos > last_block + block_size:
-
-				block_dict[block_count] = {
-					'end': block_count * block_size,
-					'variant_count' : variant_count,
-					'matches_paternal_uniparental_ambiguous_count' : matches_paternal_uniparental_ambiguous_count,
-					'matches_maternal_uniparental_ambiguous_count': matches_maternal_uniparental_ambiguous_count,
-					'matches_paternal_uniparental_isodisomy_count': matches_paternal_uniparental_isodisomy_count,
-					'matches_maternal_uniparental_isodisomy_count': matches_maternal_uniparental_isodisomy_count,
-					'alleles_identical_to_dad_count': alleles_identical_to_dad_count,
-					'alleles_identical_to_mum_count': alleles_identical_to_mum_count,
-					'is_homozygous_count': is_homozygous_count,
-					'is_biparental_count': is_biparental_count
-
-				}
-
-				variant_count = 0
-				matches_paternal_uniparental_ambiguous_count = 0
-				matches_maternal_uniparental_ambiguous_count = 0
-				matches_paternal_uniparental_isodisomy_count = 0
-				matches_maternal_uniparental_isodisomy_count = 0
-				alleles_identical_to_dad_count = 0
-				alleles_identical_to_mum_count = 0
-				is_homozygous_count = 0
-				is_biparental_count = 0
-
-				last_block = last_block + block_size
-
-
-				block_count = block_count +1
-
+			gts, ads, gq, dp, af = extract_genotype_data(rec.samples[family_member_id], rec.ref, alt, rec.chrom)
+			new_variant.add_genotype(family_member_id, gts, ads, gq, dp)
+
+		if not (new_variant.is_snp() and new_variant.all_samples_pass_genotype_quality(min_dp, min_gq)):
+			continue
+		
+		variant_list.append([rec.chrom, rec.pos, ads[0], ads[1], af, dp, gq, rec.qual])
+		flags = get_variant_match_flags(new_variant, proband_id, min_gq, min_dp)
+		accumulate_counters(counters, flags)
+
+		if has_crossed_block_boundary(new_variant.pos, last_block, block_size):
+			block_dict[block_count] = finalize_block(counters, block_count, block_size)
+			counters = init_counters()
+			last_block += block_size
+			block_count += 1
 
 	return block_dict, variant_list
 
@@ -232,8 +139,6 @@ def replace_with_na(df, column, min_count):
 	else:
 		
 		return df[column]
-
-
 
 def create_ax_for_plotting(chromosome, df, block_size, output):
 
@@ -351,8 +256,6 @@ def merge_contiguous_blocks(df, block_size, analysis, analysis2):
 	last_end = None
 
 	current_block_start = None
-	current_block_chr = None
-
 	current_p_values = []
 	current_proportions = []
 
@@ -418,18 +321,10 @@ def apply_filters(df, min_blocks, min_proportion, block_size):
 
 		return ';'.join(filters)
 
-def get_genome_build(vcf):
+def get_genome_build(header):
 	"""
 	Get the genome build from the header
 	"""
-	bcf_in = VariantFile(vcf)
-	# xticks_chrom = np.arange(plot_min, plot_max, block_size*scale_factor)
-	# xticks_labels = np.arange(plot_min, plot_max, block_size*scale_factor)
-	# x_ticks_labels = [int(x/1000000) for x in xticks_chrom]
-	header = bcf_in.header
-
-	header =  str(header)
-
 	for line in io.StringIO(header).readlines():
 
 		if '##reference' in line:
@@ -438,8 +333,97 @@ def get_genome_build(vcf):
 
 				return 37
 
-			elif 'Homo_sapiens_assembly38' in line or 'GRCh38' or 'hg38' in line:
+			elif 'Homo_sapiens_assembly38' in line or 'GRCh38' in line or 'hg38' in line:
 
 				return 38
 
 	raise Exception('Invalid reference genome in VCF header')
+
+def get_info_from_ped(ped, proband_id):
+	"""
+	Parse out all information needed from ped file
+	
+	:param ped: ped file
+	:param proband_id: sample identifier for proband
+	"""
+	# read ped into df
+	ped_df = pd.read_csv(ped, sep='\t', names=['family_id', 'sample_id', 'paternal_id', 'maternal_id', 'sex', 'affected'], dtype={'sex': str,
+																																'affected': str,
+																																'paternal_id': str,
+																																'maternal_id': str,
+																																'family_id': str,
+																																})
+	# filter by proband
+	filtered_ped = ped_df[ped_df['sample_id']==proband_id]
+
+	# get mum and dad ids
+	dad = filtered_ped['paternal_id'].iloc[0]
+	mum = filtered_ped['maternal_id'].iloc[0]
+	sex = filtered_ped['sex'].iloc[0]
+	affected = filtered_ped['affected'].iloc[0]
+
+	# get family id
+	family_id = filtered_ped['family_id'].iloc[0]
+
+	return dad, mum, sex, affected, family_id
+
+def singleton_status(dad, mum):
+	"""
+	Determine if singleton if either mum or dad, or both, missing
+	
+	:param dad: Dad sample ID
+	:param mum: Mum sample ID
+	"""
+	# Record as singleton if we don't have mum and dad
+	if dad == '0' or mum == '0':
+
+		return True
+
+	else:
+
+		return False
+	
+def set_chromosomes(just_one_chromosome, chromosome, sex, genome_build):
+	"""
+	Set chromosomes to analyse
+	"""
+	# if set to a single chromosome
+	if just_one_chromosome == True:
+
+		if sex == '1' and chromosome == 'X':
+
+			raise ValueError('Chromosome cannot be X if proband is male.')
+
+		else:
+
+			chromosomes_to_analyze = [chromosome]
+
+	else:
+
+		chromosomes_to_analyze = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X']
+
+		if sex == '2':
+
+			print ('Proband is Female - will analyse chromosomes 1-22 and X')
+
+		elif sex == '1':
+
+			print ('Proband is Male - will analyse chromosomes 1-22 only.')
+			chromosomes_to_analyze.pop()
+
+		# Previous if statement leads to a sys error if sex isn't set. Do we want it to crash if no sex, or treat as male?
+		#elif sex == '0':
+
+		#	print ('Sex not set assuming proband is Male - will analyse chromosomes 1-22 only.')
+		#	chromosomes_to_analyze.pop()
+		#	sex = '1'	
+
+	if genome_build == 38:
+			
+		print('Genome build is 38')
+		return ['chr' + c for c in chromosomes_to_analyze]
+	
+	elif genome_build == 37:
+		print('Genome build is 37')
+		return chromosomes_to_analyze
+
