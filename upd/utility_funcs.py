@@ -411,13 +411,6 @@ def set_chromosomes(just_one_chromosome, chromosome, sex, genome_build):
 			print ('Proband is Male - will analyse chromosomes 1-22 only.')
 			chromosomes_to_analyze.pop()
 
-		# Previous if statement leads to a sys error if sex isn't set. Do we want it to crash if no sex, or treat as male?
-		#elif sex == '0':
-
-		#	print ('Sex not set assuming proband is Male - will analyse chromosomes 1-22 only.')
-		#	chromosomes_to_analyze.pop()
-		#	sex = '1'	
-
 	if genome_build == 38:
 			
 		print('Genome build is 38')
