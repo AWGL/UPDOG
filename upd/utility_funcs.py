@@ -111,14 +111,18 @@ def calculate_upd_metrics_per_chromosome(bcf_in, chromosome_to_analyze, family, 
                                filter_status=rec.filter.keys(), quality=rec.qual)
 		new_variant.add_family(family)
 
+		sample_data = {}
 		for family_member_id in family_member_ids:
 			gts, ads, gq, dp, af = extract_genotype_data(rec.samples[family_member_id], rec.ref, alt, rec.chrom)
 			new_variant.add_genotype(family_member_id, gts, ads, gq, dp)
+			sample_data[family_member_id] = (ads, gq, dp, af)
 
 		if not (new_variant.is_snp() and new_variant.all_samples_pass_genotype_quality(min_dp, min_gq)):
 			continue
 		
-		variant_list.append([rec.chrom, rec.pos, ads[0], ads[1], af, dp, gq, rec.qual])
+		#Get metrics just for proband
+		p_ads, p_gq, p_dp, p_af = sample_data[proband_id]
+		variant_list.append([rec.chrom, rec.pos, p_ads[0], p_ads[1], p_af, p_dp, p_gq, rec.qual])
 		flags = get_variant_match_flags(new_variant, proband_id, min_gq, min_dp)
 		accumulate_counters(counters, flags)
 
@@ -220,7 +224,7 @@ def plot_variants(chromosome, df, output, block_size, sample_fraction):
 	ax_depth.set_xticklabels(x_ticks_labels)
 	ax_depth.set_xlabel(f'Chromosome {chromosome} Position (Mb)')
 	ax_depth.set_ylabel('Depth')
-	ax_depth.set_ylim(bottom=0)
+	ax_depth.set_ylim(bottom=0, top=80)
 
 	fig.subplots_adjust(hspace=0.05)
 
