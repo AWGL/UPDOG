@@ -15,9 +15,24 @@ UPDOG analyzes VCF files containing trio data (child and both parents) to identi
 
 ## Installation
 
+From PyPI:
 ```bash
 pip install pyupdog
 ```
+
+From GitHub (a branch, tag or commit can be given after the `@`):
+```bash
+pip install git+https://github.com/AWGL/UPDOG.git@master
+```
+
+From a local clone (use `-e` for an editable install when developing):
+```bash
+git clone https://github.com/AWGL/UPDOG.git
+cd UPDOG
+pip install .
+```
+
+All of these install the `upd` package and put `UPDog.py` on your `PATH`. Requires Python >= 3.11.
 
 ## Usage
 
