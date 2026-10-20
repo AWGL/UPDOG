@@ -162,7 +162,6 @@ def create_ax_for_plotting(chromosome, df, block_size, output):
 		scale_factor = 3
 
 	xticks_chrom = np.arange(plot_min, plot_max, block_size*scale_factor)
-	xticks_labels = np.arange(plot_min, plot_max, block_size*scale_factor)
 	x_ticks_labels = [int(x/1000000) for x in xticks_chrom]
 
 	# plot and format axis
@@ -211,7 +210,15 @@ def plot_variants(chromosome, df, output, block_size, sample_fraction):
 
 	# Plot BAF plot with a smaller depth plot sharing the same X-axis directly underneath
 	fig, (ax, ax_depth) = plt.subplots(2, 1, figsize=(20, 6), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+	
+	#Set limits for depth plot
+	mean_dp = chrom_prop_df['dp'].mean()
+	if pd.notna(mean_dp) and mean_dp > 0:
+		depth_y_lim = mean_dp * 3
+	else:
+		depth_y_lim = 150
 
+	#Do the plotting
 	ax.scatter(x='pos', y='af', data=chrom_prop_df, s=2, alpha=0.5)
 	ax.set_xlim([plot_min - 1000000, plot_max + 1000000])
 	ax.set_ylim([-0.02, 1.05])
@@ -223,7 +230,7 @@ def plot_variants(chromosome, df, output, block_size, sample_fraction):
 	ax_depth.set_xticklabels(x_ticks_labels)
 	ax_depth.set_xlabel(f'Chromosome {chromosome} Position (Mb)')
 	ax_depth.set_ylabel('Depth')
-	ax_depth.set_ylim(bottom=0, top=80)
+	ax_depth.set_ylim(bottom=0, top=depth_y_lim)
 
 	fig.subplots_adjust(hspace=0.05)
 
