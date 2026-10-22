@@ -22,7 +22,7 @@ pip install pyupdog
 
 From GitHub (a branch, tag or commit can be given after the `@`):
 ```bash
-pip install git+https://github.com/AWGL/UPDOG.git@master
+pip install git+https://github.com/AWGL/UPDOG.git@main
 ```
 
 From a local clone (use `-e` for an editable install when developing):
