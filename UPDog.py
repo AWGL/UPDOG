@@ -6,8 +6,20 @@ import sys
 import pandas as pd
 from pyvariantfilter.family import Family
 from pyvariantfilter.family_member import FamilyMember
-from pyvariantfilter.variant_set import VariantSet
-from upd.utility_funcs import calculate_upd_metrics_per_chromosome, create_ax_for_plotting, replace_with_na,is_significant, merge_contiguous_blocks, apply_filters, get_genome_build, plot_variants
+from upd.utility_funcs import (
+    apply_filters,
+    calculate_upd_metrics_per_chromosome,
+    check_affected_and_sex,
+    create_ax_for_plotting,
+    get_genome_build,
+    get_info_from_ped,
+    is_significant,
+    merge_contiguous_blocks,
+    plot_variants,
+    replace_with_na,
+    set_chromosomes,
+    singleton_status,
+)
 from pysam import VariantFile
 
 parser = argparse.ArgumentParser(description='Find UPD events in NGS Trio Data')
@@ -54,49 +66,30 @@ if args.chromosome != None:
 
 else:
 
+	chromosome = None
 	just_one_chromosome = False
 
 
 # check which genome build we have
+bcf_in = VariantFile(vcf)
+header = str(bcf_in.header)
+genome_build = get_genome_build(header)
 
-genome_build = get_genome_build(vcf)
+# Get family IDs and proband info from PED
+dad, mum, sex, affected, family_id = get_info_from_ped(ped, proband_id)
 
-# read ped into df
-ped_df = pd.read_csv(ped, sep='\t', names=['family_id', 'sample_id', 'paternal_id', 'maternal_id', 'sex', 'affected'], dtype={'sex': str,
-																															 'affected': str,
-																															 'paternal_id': str,
-																															 'maternal_id': str,
-																															 'family_id': str,
-																															 })
-# filter by proband
-filtered_ped = ped_df[ped_df['sample_id']==proband_id]
+# Determine if singleton if no mum or dad
+singleton = singleton_status(dad, mum)
 
-# get mum nad dad ids
-dad = filtered_ped['paternal_id'].iloc[0]
-mum = filtered_ped['maternal_id'].iloc[0]
-sex = filtered_ped['sex'].iloc[0]
-affected = filtered_ped['affected'].iloc[0]
+# Check affected and sex - gracefully exit if not the case so it doesn't crash
+unaffected_or_no_sex = check_affected_and_sex(affected, sex)
 
-# get family id
-family_id = filtered_ped['family_id'].iloc[0]
+if unaffected_or_no_sex:
 
-
-# Record as singleton if we don't have mum and dad
-if dad == '0' or mum == '0':
-
-	singleton = True
-
-else:
-
-	singleton = False
-
-
-if affected != '2' or sex == '0':
-
-	print('Sample must be affected in PED to create plots. Set affected solumn to 2.')
+	print('Sample must be affected or must have sex set in PED to create plots. Set affected column to 2 and/or assign sex.')
 	sys.exit(0)
 
-
+# Create family object, with just proband if no family ID
 if family_id == '0':
 
 	proband = FamilyMember(proband_id, proband_id, int(sex), True)
@@ -109,50 +102,12 @@ if family_id == '0':
 
 else:
 
-	# make a family object
+	# make a family object based on family ID
 	my_family = Family(family_id)
 	my_family.read_from_ped_file(ped, family_id, proband_id)
 
-# check which chromosomes to analyse
-if just_one_chromosome == True:
-
-	if sex == '1' and chromosome == 'X':
-
-		print ('Chromosome cannot be X if proband is male.')
-		exit()
-
-	else:
-
-		chromosomes_to_analyze = [chromosome]
-
-else:
-
-	chromosomes_to_analyze = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X']
-
-	if sex == '2':
-
-		print ('Proband is Female - will analyse chromosomes 1-22 and X')
-
-	elif sex == '1':
-
-		print ('Proband is Male - will analyse chromosomes 1-22 only.')
-		chromosomes_to_analyze.pop()
-
-	elif sex == '0':
-
-		print ('Sex not set assuming proband is Male - will analyse chromosomes 1-22 only.')
-		chromosomes_to_analyze.pop()
-		sex = '1'	
-
-	if genome_build == 38:
-
-		print('Genome build is 38')
-		chromosomes_to_analyze = ['chr' + c for c in chromosomes_to_analyze]
-
-	else:
-
-		print ('Genome build is 37')
-
+#Set chromosomes to analyse
+chromosomes_to_analyze = set_chromosomes(just_one_chromosome, chromosome, sex, genome_build)
 print ('Analysing chromosomes', ', '.join(chromosomes_to_analyze))
 
 master_df_list = []
@@ -162,7 +117,7 @@ for chromosome in chromosomes_to_analyze:
 
 	print(f'Calculating UPD Metrics for Chromosome {chromosome}')
 	
-	block_dict, variants_list = calculate_upd_metrics_per_chromosome(vcf, chromosome, my_family, block_size, min_dp, min_gq, min_qual, proband_id)
+	block_dict, variants_list = calculate_upd_metrics_per_chromosome(bcf_in, chromosome, my_family, block_size, min_dp, min_gq, min_qual, proband_id)
 	
 	df = pd.DataFrame(block_dict).transpose()
 	df['chrom'] = chromosome
